@@ -1,0 +1,699 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated executive account profile and workspace preferences",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "activeRole": {
+          "type": "string",
+          "enum": ["owner", "finance", "operations", "sales"]
+        },
+        "preferredPeriod": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 16
+        },
+        "preferredBranch": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "favoriteReportIds": {
+          "type": "array",
+          "description": "Up to 20 favorite report IDs"
+        },
+        "recentReportIds": {
+          "type": "array",
+          "description": "Up to 10 recent report IDs"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "activeRole",
+        "preferredPeriod",
+        "preferredBranch",
+        "favoriteReportIds",
+        "recentReportIds",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Strictly owner-only PII record isolated from workspace profile",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "EnterpriseWorkspace": {
+      "title": "EnterpriseWorkspace",
+      "description": "Shared enterprise workspace container for executive roles",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "name", "createdByUid", "createdAt", "updatedAt"]
+    },
+    "WorkspaceDecision": {
+      "title": "WorkspaceDecision",
+      "description": "Shared enterprise decision case synced across executive roles",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "detection",
+            "verification",
+            "diagnosis",
+            "decision_design",
+            "assignment_approval",
+            "execution",
+            "outcome_measurement"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "ownerRole": {
+          "type": "string",
+          "enum": ["owner", "finance", "operations", "commercial", "sales"]
+        },
+        "branchScope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "period": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24
+        },
+        "detectedMetric": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "baselineValue": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "currentValue": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "estimatedFinancialImpact": {
+          "type": "number"
+        },
+        "verificationStatus": {
+          "type": "string",
+          "enum": ["verified", "partial", "rejected"]
+        },
+        "diagnosisSummary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "epistemicLevel": {
+          "type": "string",
+          "enum": [
+            "calculated_fact",
+            "analytical_conclusion",
+            "hypothesis",
+            "recommendation",
+            "execution_outcome"
+          ]
+        },
+        "proposedAction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "requiresOwnerApproval": {
+          "type": "boolean"
+        },
+        "approvalStatus": {
+          "type": "string",
+          "enum": ["pending_review", "approved", "rejected", "not_required"]
+        },
+        "approvedBy": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "dueDate": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 32
+        },
+        "executionNotes": {
+          "type": "array"
+        },
+        "outcomeMeasurement": {
+          "type": "object",
+          "description": "Optional post-execution outcome measurement record"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "createdByUid",
+        "title",
+        "category",
+        "stage",
+        "severity",
+        "ownerRole",
+        "branchScope",
+        "period",
+        "detectedMetric",
+        "baselineValue",
+        "currentValue",
+        "estimatedFinancialImpact",
+        "verificationStatus",
+        "diagnosisSummary",
+        "epistemicLevel",
+        "proposedAction",
+        "requiresOwnerApproval",
+        "approvalStatus",
+        "dueDate",
+        "executionNotes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WorkspaceAlertRule": {
+      "title": "WorkspaceAlertRule",
+      "description": "Shared proactive deviation threshold rule",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "metricKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "metricLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["م.د.ع", "%", "يوم"]
+        },
+        "comparator": {
+          "type": "string",
+          "enum": ["gt", "lt"]
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "updatedBy": {
+          "type": "string",
+          "enum": ["owner", "finance", "operations", "commercial", "sales"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "createdByUid",
+        "metricKey",
+        "metricLabel",
+        "unit",
+        "comparator",
+        "threshold",
+        "enabled",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WorkspaceAlertState": {
+      "title": "WorkspaceAlertState",
+      "description": "Shared acknowledgement or escalation state for a deviation alert",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "alertKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "status": {
+          "type": "string",
+          "enum": ["acknowledged", "escalated"]
+        },
+        "by": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "createdByUid",
+        "alertKey",
+        "status",
+        "by",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WorkspaceAuditLog": {
+      "title": "WorkspaceAuditLog",
+      "description": "Immutable enterprise governance audit log entry",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "actorRole": {
+          "type": "string",
+          "enum": ["owner", "finance", "operations", "commercial", "sales"]
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "createdByUid",
+        "actorRole",
+        "action",
+        "target",
+        "detail",
+        "createdAt"
+      ]
+    },
+    "WorkspaceRolePermission": {
+      "title": "WorkspaceRolePermission",
+      "description": "Admin-managed custom division, branch, report, and capability permissions for executive roles",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["operations", "finance", "sales"]
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "roleTitleAr": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "allowedSections": {
+          "type": "array",
+          "description": "Allowed workspace division/section IDs"
+        },
+        "allowedBranches": {
+          "type": "array",
+          "description": "Allowed branch/department scopes"
+        },
+        "allowedReportCategories": {
+          "type": "array",
+          "description": "Allowed report category titles"
+        },
+        "canViewFinancialMargins": {
+          "type": "boolean"
+        },
+        "canViewTrustVault": {
+          "type": "boolean"
+        },
+        "canViewAuditLogs": {
+          "type": "boolean"
+        },
+        "canRunAiAnalysis": {
+          "type": "boolean"
+        },
+        "canExportReports": {
+          "type": "boolean"
+        },
+        "canManageAlerts": {
+          "type": "boolean"
+        },
+        "canResolveConflicts": {
+          "type": "boolean"
+        },
+        "canCreateDecisions": {
+          "type": "boolean"
+        },
+        "updatedByEmail": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "createdByUid",
+        "roleTitleAr",
+        "allowedSections",
+        "allowedBranches",
+        "allowedReportCategories",
+        "canViewFinancialMargins",
+        "canViewTrustVault",
+        "canViewAuditLogs",
+        "canRunAiAnalysis",
+        "canExportReports",
+        "canManageAlerts",
+        "canResolveConflicts",
+        "canCreateDecisions",
+        "updatedByEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WorkspaceBudgetPermission": {
+      "title": "WorkspaceBudgetPermission",
+      "description": "Finance Director controlled budget line-item access policy for Operations and Sales directors",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["operations", "sales"]
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "roleTitleAr": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "allowedBudgetItems": {
+          "type": "array",
+          "description": "Allowlisted budget line-item IDs permitted for this director"
+        },
+        "strictControlEnabled": {
+          "type": "boolean"
+        },
+        "updatedByRole": {
+          "type": "string",
+          "enum": ["finance", "owner"]
+        },
+        "updatedByEmail": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "createdByUid",
+        "roleTitleAr",
+        "allowedBudgetItems",
+        "strictControlEnabled",
+        "updatedByRole",
+        "updatedByEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted admin marker document",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Executive account workspace profile and report preferences owned by userId"
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated PII document storing executive account email"
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/EnterpriseWorkspace" },
+      "description": "Enterprise workspace root document"
+    },
+    "/workspaces/{workspaceId}/decisions/{decisionId}": {
+      "schema": { "$ref": "#/entities/WorkspaceDecision" },
+      "description": "Shared enterprise decision cases across executive roles"
+    },
+    "/workspaces/{workspaceId}/alertRules/{ruleId}": {
+      "schema": { "$ref": "#/entities/WorkspaceAlertRule" },
+      "description": "Shared proactive deviation alert rules"
+    },
+    "/workspaces/{workspaceId}/alertStates/{alertId}": {
+      "schema": { "$ref": "#/entities/WorkspaceAlertState" },
+      "description": "Shared alert acknowledgement and escalation records"
+    },
+    "/workspaces/{workspaceId}/workspaceLogs/{logId}": {
+      "schema": { "$ref": "#/entities/WorkspaceAuditLog" },
+      "description": "Immutable shared governance audit log records"
+    },
+    "/workspaces/{workspaceId}/rolePermissions/{roleId}": {
+      "schema": { "$ref": "#/entities/WorkspaceRolePermission" },
+      "description": "Admin-managed access control policies per executive role"
+    },
+    "/workspaces/{workspaceId}/budgetPermissions/{roleId}": {
+      "schema": { "$ref": "#/entities/WorkspaceBudgetPermission" },
+      "description": "Finance Director controlled budget line-item permissions for operations and sales"
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Trusted admin directory"
+    }
+  }
+}

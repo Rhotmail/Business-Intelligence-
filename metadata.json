@@ -1,0 +1,6 @@
+{
+  "name": "OWNER AI Enterprise",
+  "description": "منصة استخبارات اقتصادية وإدارية موحدة للتحكم في الأداء، والتحقق من البيانات، وحماية الكيانات محلياً، وإدارة دورة القرارات التنفيذية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

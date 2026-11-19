@@ -1,0 +1,605 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable primitives
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email_verified == true && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'rafi6630@gmail.com'
+      );
+    }
+
+    function isExecutiveAccountRole(role) {
+      return role in ['owner', 'operations', 'finance', 'sales'];
+    }
+
+    function isValidDomainRole(role) {
+      return role in ['owner', 'finance', 'operations', 'commercial', 'sales'];
+    }
+
+    function parentUserExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function currentUserExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function currentUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.activeRole;
+    }
+
+    function isEnterpriseOwner() {
+      return currentUserExists() && currentUserRole() == 'owner';
+    }
+
+    function isFinanceDirector() {
+      return currentUserExists() && currentUserRole() == 'finance';
+    }
+
+    function workspaceExists(workspaceId) {
+      return workspaceId == 'enterprise_main'
+        && exists(/databases/$(database)/documents/workspaces/$(workspaceId));
+    }
+
+    // Validation Blueprints (Anti-Update-Gap)
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'activeRole', 'preferredPeriod',
+          'preferredBranch', 'favoriteReportIds', 'recentReportIds',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'activeRole', 'preferredPeriod',
+          'preferredBranch', 'favoriteReportIds', 'recentReportIds',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string
+        && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == userId
+        && data.displayName is string
+        && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && isExecutiveAccountRole(data.activeRole)
+        && data.preferredPeriod is string
+        && data.preferredPeriod.size() >= 3 && data.preferredPeriod.size() <= 16
+        && data.preferredBranch is string
+        && data.preferredBranch.size() >= 1 && data.preferredBranch.size() <= 64
+        && data.favoriteReportIds is list
+        && data.favoriteReportIds.size() <= 20
+        && (data.favoriteReportIds.size() == 0 || (data.favoriteReportIds[0] is string && data.favoriteReportIds[0].size() <= 64))
+        && data.recentReportIds is list
+        && data.recentReportIds.size() <= 10
+        && (data.recentReportIds.size() == 0 || (data.recentReportIds[0] is string && data.recentReportIds[0].size() <= 64))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == userId
+        && data.email is string
+        && data.email.size() >= 3 && data.email.size() <= 254
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWorkspace(data, workspaceId) {
+      return data.keys().hasAll(['id', 'name', 'createdByUid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'createdByUid', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 64
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$') && data.id == workspaceId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128
+        && data.createdByUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOutcomeMeasurement(om) {
+      return om is map
+        && om.keys().hasAll(['postActionValue', 'deltaObserved', 'attributionConfidence', 'verdict'])
+        && om.keys().hasOnly(['postActionValue', 'deltaObserved', 'attributionConfidence', 'verdict'])
+        && om.postActionValue is string && om.postActionValue.size() >= 1 && om.postActionValue.size() <= 200
+        && om.deltaObserved is string && om.deltaObserved.size() >= 1 && om.deltaObserved.size() <= 400
+        && om.attributionConfidence is string && om.attributionConfidence.size() >= 1 && om.attributionConfidence.size() <= 240
+        && om.verdict in ['improved', 'unchanged', 'worsened'];
+    }
+
+    function isValidDecision(data, workspaceId, decisionId) {
+      return data.keys().hasAll([
+          'id', 'workspaceId', 'createdByUid', 'title', 'category', 'stage', 'severity',
+          'ownerRole', 'branchScope', 'period', 'detectedMetric', 'baselineValue',
+          'currentValue', 'estimatedFinancialImpact', 'verificationStatus',
+          'diagnosisSummary', 'epistemicLevel', 'proposedAction',
+          'requiresOwnerApproval', 'approvalStatus', 'dueDate', 'executionNotes',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'workspaceId', 'createdByUid', 'title', 'category', 'stage', 'severity',
+          'ownerRole', 'branchScope', 'period', 'detectedMetric', 'baselineValue',
+          'currentValue', 'estimatedFinancialImpact', 'verificationStatus',
+          'diagnosisSummary', 'epistemicLevel', 'proposedAction',
+          'requiresOwnerApproval', 'approvalStatus', 'approvedBy', 'dueDate',
+          'executionNotes', 'outcomeMeasurement', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 64
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$') && data.id == decisionId
+        && data.workspaceId is string && data.workspaceId.size() >= 1 && data.workspaceId.size() <= 64
+        && data.workspaceId.matches('^[a-zA-Z0-9_\\-]+$') && data.workspaceId == workspaceId
+        && data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128
+        && data.createdByUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 240
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 100
+        && data.stage in ['detection', 'verification', 'diagnosis', 'decision_design', 'assignment_approval', 'execution', 'outcome_measurement']
+        && data.severity in ['high', 'medium', 'low']
+        && isValidDomainRole(data.ownerRole)
+        && data.branchScope is string && data.branchScope.size() >= 1 && data.branchScope.size() <= 64
+        && data.period is string && data.period.size() >= 1 && data.period.size() <= 24
+        && data.detectedMetric is string && data.detectedMetric.size() >= 1 && data.detectedMetric.size() <= 160
+        && data.baselineValue is string && data.baselineValue.size() >= 1 && data.baselineValue.size() <= 120
+        && data.currentValue is string && data.currentValue.size() >= 1 && data.currentValue.size() <= 120
+        && data.estimatedFinancialImpact is number
+        && data.verificationStatus in ['verified', 'partial', 'rejected']
+        && data.diagnosisSummary is string && data.diagnosisSummary.size() >= 1 && data.diagnosisSummary.size() <= 1000
+        && data.epistemicLevel in ['calculated_fact', 'analytical_conclusion', 'hypothesis', 'recommendation', 'execution_outcome']
+        && data.proposedAction is string && data.proposedAction.size() >= 1 && data.proposedAction.size() <= 1000
+        && data.requiresOwnerApproval is bool
+        && data.approvalStatus in ['pending_review', 'approved', 'rejected', 'not_required']
+        && (!('approvedBy' in data) || (data.approvedBy is string && data.approvedBy.size() <= 120))
+        && (!('outcomeMeasurement' in data) || isValidOutcomeMeasurement(data.outcomeMeasurement))
+        && data.dueDate is string && data.dueDate.size() >= 4 && data.dueDate.size() <= 32
+        && data.executionNotes is list && data.executionNotes.size() <= 50
+        && (data.executionNotes.size() == 0 || (data.executionNotes[0] is string && data.executionNotes[0].size() <= 400))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAlertRule(data, workspaceId, ruleId) {
+      return data.keys().hasAll([
+          'id', 'workspaceId', 'createdByUid', 'metricKey', 'metricLabel', 'unit',
+          'comparator', 'threshold', 'enabled', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'workspaceId', 'createdByUid', 'metricKey', 'metricLabel', 'unit',
+          'comparator', 'threshold', 'enabled', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 64
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$') && data.id == ruleId
+        && data.workspaceId is string && data.workspaceId.size() >= 1 && data.workspaceId.size() <= 64
+        && data.workspaceId.matches('^[a-zA-Z0-9_\\-]+$') && data.workspaceId == workspaceId
+        && data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128
+        && data.createdByUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.metricKey is string && data.metricKey.size() >= 1 && data.metricKey.size() <= 64
+        && data.metricKey.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.metricLabel is string && data.metricLabel.size() >= 1 && data.metricLabel.size() <= 120
+        && data.unit in ['م.د.ع', '%', 'يوم']
+        && data.comparator in ['gt', 'lt']
+        && data.threshold is number && data.threshold >= 0 && data.threshold <= 1000000
+        && data.enabled is bool
+        && isValidDomainRole(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAlertState(data, workspaceId, alertId) {
+      return data.keys().hasAll(['id', 'workspaceId', 'createdByUid', 'alertKey', 'status', 'by', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'workspaceId', 'createdByUid', 'alertKey', 'status', 'by', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$') && data.id == alertId
+        && data.workspaceId is string && data.workspaceId.size() >= 1 && data.workspaceId.size() <= 64
+        && data.workspaceId.matches('^[a-zA-Z0-9_\\-]+$') && data.workspaceId == workspaceId
+        && data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128
+        && data.createdByUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.alertKey is string && data.alertKey.size() >= 1 && data.alertKey.size() <= 160
+        && data.status in ['acknowledged', 'escalated']
+        && data.by is string && data.by.size() >= 1 && data.by.size() <= 100
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWorkspaceLog(data, workspaceId, logId) {
+      return data.keys().hasAll(['id', 'workspaceId', 'createdByUid', 'actorRole', 'action', 'target', 'detail', 'createdAt'])
+        && data.keys().hasOnly(['id', 'workspaceId', 'createdByUid', 'actorRole', 'action', 'target', 'detail', 'createdAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 64
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$') && data.id == logId
+        && data.workspaceId is string && data.workspaceId.size() >= 1 && data.workspaceId.size() <= 64
+        && data.workspaceId.matches('^[a-zA-Z0-9_\\-]+$') && data.workspaceId == workspaceId
+        && data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128
+        && data.createdByUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && isValidDomainRole(data.actorRole)
+        && data.action is string && data.action.size() >= 1 && data.action.size() <= 160
+        && data.target is string && data.target.size() >= 1 && data.target.size() <= 120
+        && data.detail is string && data.detail.size() >= 1 && data.detail.size() <= 400
+        && data.createdAt is timestamp;
+    }
+
+    function isValidRolePermission(data, workspaceId, roleId) {
+      return data.keys().hasAll([
+          'id', 'workspaceId', 'createdByUid', 'roleTitleAr',
+          'allowedSections', 'allowedBranches', 'allowedReportCategories',
+          'canViewFinancialMargins', 'canViewTrustVault', 'canViewAuditLogs',
+          'canRunAiAnalysis', 'canExportReports', 'canManageAlerts',
+          'canResolveConflicts', 'canCreateDecisions', 'updatedByEmail',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'workspaceId', 'createdByUid', 'roleTitleAr',
+          'allowedSections', 'allowedBranches', 'allowedReportCategories',
+          'canViewFinancialMargins', 'canViewTrustVault', 'canViewAuditLogs',
+          'canRunAiAnalysis', 'canExportReports', 'canManageAlerts',
+          'canResolveConflicts', 'canCreateDecisions', 'updatedByEmail',
+          'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id in ['operations', 'finance', 'sales'] && data.id == roleId
+        && data.workspaceId is string && data.workspaceId.size() >= 1 && data.workspaceId.size() <= 64
+        && data.workspaceId.matches('^[a-zA-Z0-9_\\-]+$') && data.workspaceId == workspaceId
+        && data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128
+        && data.createdByUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.roleTitleAr is string && data.roleTitleAr.size() >= 1 && data.roleTitleAr.size() <= 80
+        && data.allowedSections is list
+        && data.allowedSections.size() <= 6
+        && (data.allowedSections.size() == 0 || (data.allowedSections[0] is string && data.allowedSections[0].size() <= 32))
+        && data.allowedSections.hasOnly(['home', 'reports', 'analysis', 'decisions', 'data', 'trust'])
+        && data.allowedBranches is list
+        && data.allowedBranches.size() >= 1 && data.allowedBranches.size() <= 10
+        && (data.allowedBranches[0] is string && data.allowedBranches[0].size() <= 64)
+        && data.allowedBranches.hasOnly(['الشركة كاملة', 'بغداد', 'البصرة', 'أربيل'])
+        && data.allowedReportCategories is list
+        && data.allowedReportCategories.size() <= 10
+        && (data.allowedReportCategories.size() == 0 || (data.allowedReportCategories[0] is string && data.allowedReportCategories[0].size() <= 80))
+        && data.allowedReportCategories.hasOnly([
+          'الربحية والهوامش', 'السيولة والذمم', 'المخزون والتوريد',
+          'الكفاءة التشغيلية', 'التجارية والتسعير', 'المبيعات والنمو'
+        ])
+        && data.canViewFinancialMargins is bool
+        && data.canViewTrustVault is bool
+        && data.canViewAuditLogs is bool
+        && data.canRunAiAnalysis is bool
+        && data.canExportReports is bool
+        && data.canManageAlerts is bool
+        && data.canResolveConflicts is bool
+        && data.canCreateDecisions is bool
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 254
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBudgetPermission(data, workspaceId, roleId) {
+      return data.keys().hasAll([
+          'id', 'workspaceId', 'createdByUid', 'roleTitleAr',
+          'allowedBudgetItems', 'strictControlEnabled',
+          'updatedByRole', 'updatedByEmail', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'workspaceId', 'createdByUid', 'roleTitleAr',
+          'allowedBudgetItems', 'strictControlEnabled',
+          'updatedByRole', 'updatedByEmail', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id in ['operations', 'sales'] && data.id == roleId
+        && data.workspaceId is string && data.workspaceId.size() >= 1 && data.workspaceId.size() <= 64
+        && data.workspaceId.matches('^[a-zA-Z0-9_\\-]+$') && data.workspaceId == workspaceId
+        && data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128
+        && data.createdByUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.roleTitleAr is string && data.roleTitleAr.size() >= 1 && data.roleTitleAr.size() <= 80
+        && data.allowedBudgetItems is list
+        && data.allowedBudgetItems.size() <= 10
+        && (data.allowedBudgetItems.size() == 0 || (data.allowedBudgetItems[0] is string && data.allowedBudgetItems[0].size() <= 40))
+        && data.allowedBudgetItems.hasOnly([
+          'revenue_budget', 'cogs_budget', 'discounts_budget', 'opex_budget',
+          'variable_cost_budget', 'inventory_budget', 'ar_credit_budget', 'waste_budget'
+        ])
+        && data.strictControlEnabled is bool
+        && data.updatedByRole in ['finance', 'owner']
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 254
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Admin registry (read-only for authenticated admins)
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isOwner(adminId) && isAdmin();
+      allow list, create, update, delete: if false;
+    }
+
+    // Executive User Profile (role locked after creation)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && (isOwner(userId) || isAdmin())
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().activeRole == existing().activeRole
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'preferredPeriod', 'preferredBranch',
+            'favoriteReportIds', 'recentReportIds', 'updatedAt'
+          ])
+        );
+      allow delete: if false;
+
+      // Isolated PII collection
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && docId == 'info' && (isOwner(userId) || isAdmin());
+        allow list: if false;
+        allow create: if isSignedIn()
+          && isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && isOwner(userId)
+          && isValidUserPrivateInfo(incoming(), userId)
+          && parentUserExists(userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isSignedIn()
+          && isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && (isOwner(userId) || isAdmin())
+          && isValidUserPrivateInfo(incoming(), userId)
+          && parentUserExists(userId)
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin() ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt'])
+          );
+        allow delete: if false;
+      }
+    }
+
+    // Shared Enterprise Workspace
+    match /workspaces/{workspaceId} {
+      allow get: if isSignedIn() && isValidId(workspaceId) && workspaceId == 'enterprise_main';
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidId(workspaceId)
+        && workspaceId == 'enterprise_main'
+        && currentUserExists()
+        && isValidWorkspace(incoming(), workspaceId)
+        && incoming().createdByUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update, delete: if false;
+
+      // Admin-configured Custom Role Access Permissions (Admin/Owner write-only)
+      match /rolePermissions/{roleId} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(roleId)
+          && workspaceExists(workspaceId) && currentUserExists();
+        allow list: if isSignedIn() && resource.data.workspaceId == 'enterprise_main';
+        allow create: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(roleId)
+          && (isEnterpriseOwner() || isAdmin())
+          && isValidRolePermission(incoming(), workspaceId, roleId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().createdByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(roleId)
+          && (isEnterpriseOwner() || isAdmin())
+          && isValidRolePermission(incoming(), workspaceId, roleId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().workspaceId == existing().workspaceId
+          && incoming().id == existing().id
+          && incoming().createdByUid == existing().createdByUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'roleTitleAr', 'allowedSections', 'allowedBranches', 'allowedReportCategories',
+            'canViewFinancialMargins', 'canViewTrustVault', 'canViewAuditLogs',
+            'canRunAiAnalysis', 'canExportReports', 'canManageAlerts',
+            'canResolveConflicts', 'canCreateDecisions', 'updatedByEmail', 'updatedAt'
+          ]);
+        allow delete: if false;
+      }
+
+      // Finance Director Budget Line-Item Governance (Finance / Owner / Admin write-only)
+      match /budgetPermissions/{roleId} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(roleId)
+          && workspaceExists(workspaceId) && currentUserExists();
+        allow list: if isSignedIn() && resource.data.workspaceId == 'enterprise_main';
+        allow create: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(roleId)
+          && (isFinanceDirector() || isEnterpriseOwner() || isAdmin())
+          && isValidBudgetPermission(incoming(), workspaceId, roleId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().createdByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(roleId)
+          && (isFinanceDirector() || isEnterpriseOwner() || isAdmin())
+          && isValidBudgetPermission(incoming(), workspaceId, roleId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().workspaceId == existing().workspaceId
+          && incoming().id == existing().id
+          && incoming().createdByUid == existing().createdByUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'roleTitleAr', 'allowedBudgetItems', 'strictControlEnabled',
+            'updatedByRole', 'updatedByEmail', 'updatedAt'
+          ]);
+        allow delete: if false;
+      }
+
+      // Shared Executive Decisions (Owner-only approval)
+      match /decisions/{decisionId} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(decisionId)
+          && workspaceExists(workspaceId) && currentUserExists();
+        allow list: if isSignedIn() && resource.data.workspaceId == 'enterprise_main';
+        allow create: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(decisionId)
+          && isValidDecision(incoming(), workspaceId, decisionId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().createdByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(decisionId)
+          && isValidDecision(incoming(), workspaceId, decisionId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().workspaceId == existing().workspaceId
+          && incoming().id == existing().id
+          && incoming().createdByUid == existing().createdByUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin() ||
+            (
+              existing().stage != 'outcome_measurement'
+              && existing().approvalStatus != 'rejected'
+              && (
+                (isEnterpriseOwner() && incoming().diff(existing()).affectedKeys().hasOnly(['approvalStatus', 'approvedBy', 'stage', 'executionNotes', 'updatedAt'])) ||
+                (incoming().diff(existing()).affectedKeys().hasOnly(['stage', 'epistemicLevel', 'executionNotes', 'outcomeMeasurement', 'updatedAt']))
+              )
+            )
+          );
+        allow delete: if false;
+      }
+
+      // Shared Proactive Alert Threshold Rules
+      match /alertRules/{ruleId} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(ruleId)
+          && workspaceExists(workspaceId) && currentUserExists();
+        allow list: if isSignedIn() && resource.data.workspaceId == 'enterprise_main';
+        allow create: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(ruleId)
+          && isValidAlertRule(incoming(), workspaceId, ruleId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().createdByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(ruleId)
+          && isValidAlertRule(incoming(), workspaceId, ruleId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().workspaceId == existing().workspaceId
+          && incoming().id == existing().id
+          && incoming().metricKey == existing().metricKey
+          && incoming().createdByUid == existing().createdByUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin() ||
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'threshold', 'comparator', 'enabled', 'updatedBy', 'updatedAt'
+            ])
+          );
+        allow delete: if false;
+      }
+
+      // Shared Alert States (Acknowledged / Escalated)
+      match /alertStates/{alertId} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(alertId)
+          && workspaceExists(workspaceId) && currentUserExists();
+        allow list: if isSignedIn() && resource.data.workspaceId == 'enterprise_main';
+        allow create: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(alertId)
+          && isValidAlertState(incoming(), workspaceId, alertId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().createdByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(alertId)
+          && isValidAlertState(incoming(), workspaceId, alertId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().workspaceId == existing().workspaceId
+          && incoming().id == existing().id
+          && incoming().alertKey == existing().alertKey
+          && incoming().createdByUid == existing().createdByUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin() ||
+            (
+              existing().status != 'escalated'
+              && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'by', 'updatedAt'])
+            )
+          );
+        allow delete: if isSignedIn() && isValidId(workspaceId) && isValidId(alertId)
+          && workspaceExists(workspaceId) && (isEnterpriseOwner() || isAdmin());
+      }
+
+      // Append-only Shared Workspace Audit Logs
+      match /workspaceLogs/{logId} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(logId)
+          && workspaceExists(workspaceId) && currentUserExists();
+        allow list: if isSignedIn() && resource.data.workspaceId == 'enterprise_main';
+        allow create: if isSignedIn()
+          && isValidId(workspaceId)
+          && isValidId(logId)
+          && isValidWorkspaceLog(incoming(), workspaceId, logId)
+          && workspaceExists(workspaceId)
+          && currentUserExists()
+          && incoming().createdByUid == request.auth.uid
+          && incoming().createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

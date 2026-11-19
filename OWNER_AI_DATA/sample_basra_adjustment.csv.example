@@ -1,0 +1,2 @@
+period,branch,channel,customer,product,supplier,unitsSold,listPrice,discountAmount,cogs,variableCost,opexAllocated,inventoryValue,inventoryDays,arBalance,arDays,wasteCost,slaFulfillmentPct
+2026-Q3,البصرة,الجملة المباشرة,العميل النور,منتج روابي,المورد الأصيل,1500,12500,900000,11800000,1450000,1100000,7200000,34,3500000,29,180000,97.2
